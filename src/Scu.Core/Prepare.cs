@@ -27,8 +27,26 @@ public static class Prepare
 
     public static string PreparedPath(string randomizerRoot, string relative) => Path.Combine(PreparedDirectory(randomizerRoot), relative.Replace('/', Path.DirectorySeparatorChar));
 
+    /// <summary>
+    /// Plain JSON documents the build reads from the randomizer folder. They are not in the shipped package (they hold data
+    /// from the user's game), so they are written from the recipe, byte for byte as the randomizer writes them.
+    /// </summary>
+    static readonly string[] Documents =
+    {
+        "app/soul-lt-room.json",
+        "app/updates/sanctuary-LT/all/room-plan.json",
+        "app/updates/soul-X3-analysis/destination-spatial-survey.json",
+        "app/updates/soul-X6-analysis/special-space-survey.json",
+        "app/updates/soul-X6-analysis/terminal-mirror-patch.json",
+    };
+
+    /// <summary>The transcendent rules pak: a shipped template whose holes are filled from the user's game and from locally rebuilt maps.</summary>
+    const string RulesPakTarget = "app/difficulty-assets/20261011-v100/rules.pak";
+
+    static string DocumentPath(string root, string target) => Path.Combine(root, target.Replace('/', Path.DirectorySeparatorChar));
+
     public static bool IsPrepared(string randomizerRoot)
-        => Wanted.All(w => File.Exists(PreparedPath(randomizerRoot, w.Output)) && File.Exists(Path.ChangeExtension(PreparedPath(randomizerRoot, w.Output), ".uexp")))
+        => Documents.All(d => File.Exists(DocumentPath(randomizerRoot, d))) && File.Exists(DocumentPath(randomizerRoot, RulesPakTarget)) && Wanted.All(w => File.Exists(PreparedPath(randomizerRoot, w.Output)) && File.Exists(Path.ChangeExtension(PreparedPath(randomizerRoot, w.Output), ".uexp")))
            && File.Exists(Path.Combine(randomizerRoot, "extracted/Kageroh/Content/Levels/RundomMapTiles/Stage6x5.umap"));
 
     /// <summary>Prepared package: ours if present, otherwise the one the Python randomizer's preparation left in the folder.</summary>
@@ -58,8 +76,36 @@ public static class Prepare
         return Convert.ToHexString(SHA256.HashData(f)).ToLowerInvariant();
     }
 
-    public static void Run(string root, string game, Action<string> note)
+    /// <summary>The files from the randomizer package that the build reads, copied into a separate cache folder (the rest of the package is not needed there).</summary>
+    static readonly string[] SmallShipped =
     {
+        "portable-spec.json",
+        "tools/repak-0.2.3/repak.exe",
+        "app/difficulty-assets/catalog.json",
+        "app/difficulty-assets/20261011-v100/manifest.json",
+        "app/updates/sanctuary-LT/all/event-plan.json",
+        "app/updates/sanctuary-LT/all/donor-preflight.json",
+    };
+
+    /// <summary>Make <paramref name="cacheRoot"/> usable as the randomizer root: copy the small shipped files (the big ones are read from the package when needed).</summary>
+    public static void SyncShipped(string shippedRoot, string cacheRoot)
+    {
+        static string Normal(string p) => Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(Normal(shippedRoot), Normal(cacheRoot), StringComparison.OrdinalIgnoreCase)) return;
+        foreach (var rel in SmallShipped)
+        {
+            var from = Path.Combine(shippedRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+            var to = Path.Combine(cacheRoot, rel.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(from)) throw new BuildException("randomizer_incomplete", $"필요한 파일을 찾을 수 없습니다: {from}");
+            if (File.Exists(to) && Sha(to) == Sha(from)) continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            File.Copy(from, to, true);
+        }
+    }
+
+    public static void Run(string root, string game, Action<string> note, string? shippedRoot = null)
+    {
+        shippedRoot ??= root;
         using var spec = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "portable-spec.json"), Encoding.UTF8));
         var s = spec.RootElement;
         note("게임 버전 확인 중…");
@@ -95,9 +141,9 @@ public static class Prepare
 
         // ---- prepared packages from the recipe ----
         var pending = Wanted.Where(w => !File.Exists(PreparedPath(root, w.Output))).ToList();
-        if (pending.Count == 0) return;
+        if (pending.Count == 0 && Documents.All(d => File.Exists(DocumentPath(root, d))) && File.Exists(DocumentPath(root, RulesPakTarget))) return;
         note("사용자 원본으로 맵 재료 준비 중…");
-        var recipePath = Path.Combine(root, "app/local-map-recipes/recipe.json");
+        var recipePath = Path.Combine(shippedRoot, "app/local-map-recipes/recipe.json");
         using var recipeDoc = JsonDocument.Parse(File.ReadAllBytes(recipePath), DeepJson);
         var recipe = recipeDoc.RootElement;
         var jobs = recipe.GetProperty("json").EnumerateArray().ToDictionary(r => r.GetProperty("target").GetString()!, r => r);
@@ -118,7 +164,117 @@ public static class Prepare
             asset.Raw.Write(dest);
             sources.Trim();
         }
+
+        // ---- plain JSON documents, written the way the randomizer writes them (their hashes are pinned) ----
+        foreach (var target in Documents)
+        {
+            Require(jobs.TryGetValue(target, out var job), "recipe target missing: " + target);
+            var wanted = job.GetProperty("sha256").GetString()!;
+            var dest = DocumentPath(root, target);
+            if (File.Exists(dest) && Sha(dest) == wanted) continue;
+            note("사용자 원본으로 맵 재료 준비 중: " + Path.GetFileName(target));
+            using var stream = new MemoryStream();
+            using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { MaxDepth = 4096 }))
+                RecipeEvaluator.Write(null, job.GetProperty("expression"), sources, writer);
+            var bytes = PythonJson.Format(stream.ToArray(), job);
+            var actual = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            Require(actual == wanted, "생성한 맵 자료가 검증된 결과와 다릅니다: " + Path.GetFileName(target));
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.WriteAllBytes(dest, bytes);
+            sources.Trim();
+        }
+
+        EnsureRulesPak(root, shippedRoot, game, s, recipe, jobs, sources, note);
     }
+
+    /// <summary>local_original_assets.ensure_local_assets for the rules pak (mode binary_holes).</summary>
+    static void EnsureRulesPak(string root, string shippedRoot, string game, JsonElement spec, JsonElement recipe, Dictionary<string, JsonElement> jobs, RecipeSources sources, Action<string> note)
+    {
+        var row = spec.GetProperty("local_assets").GetProperty("paks").EnumerateArray().First(p => p.GetProperty("target").GetString() == RulesPakTarget);
+        var wanted = row.GetProperty("sha256").GetString()!;
+        var dest = DocumentPath(root, RulesPakTarget);
+        if (File.Exists(dest) && Sha(dest) == wanted) return;
+        note("사용자 게임 자료로 수정 Pak 준비 중: rules.pak");
+        if (row.GetProperty("mode").GetString() != "binary_holes") Fail("지원하지 않는 수정 자료의 준비 방식입니다.");
+        var template = DocumentPath(shippedRoot, row.GetProperty("template").GetString()!);
+        Require(File.Exists(template) && Sha(template) == row.GetProperty("template_sha256").GetString(), "배포한 수정 자료가 손상되었습니다.");
+        var data = File.ReadAllBytes(template);
+        var holes = row.GetProperty("original_members").EnumerateArray().ToList();
+        var ranges = new List<(int Start, int End)>();
+        foreach (var hole in holes)
+        {
+            int start = hole.GetProperty("offset").GetInt32(), size = hole.GetProperty("length").GetInt32(), end = start + size;
+            Require(start >= 0 && size > 0 && end <= data.Length, "원본 자료를 채울 위치가 올바르지 않습니다.");
+            Require(!ranges.Any(r => start < r.End && r.Start < end), "원본 자료를 채울 위치가 겹칩니다.");
+            Require(data.AsSpan(start, size).IndexOfAnyExcept((byte)0) < 0, "수정 템플릿의 원본 자료 자리가 비어 있지 않습니다.");
+            ranges.Add((start, end));
+        }
+
+        // locally rebuilt maps: output path -> the conversion that produces it
+        var conversions = new Dictionary<string, JsonElement>();
+        foreach (var c in recipe.GetProperty("conversions").EnumerateArray())
+            foreach (var output in c.GetProperty("outputs").EnumerateObject()) conversions[output.Name] = c;
+
+        var gamePak = Path.Combine(game, "Kageroh/Content/Paks/Kageroh-WindowsNoEditor.pak");
+        var temp = Path.Combine(Path.GetTempPath(), "scu-rules-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach (var hole in holes)
+            {
+                var expected = hole.GetProperty("sha256").GetString()!;
+                byte[] bytes;
+                if (hole.TryGetProperty("source_member", out var member))
+                {
+                    var file = Path.Combine(temp, Guid.NewGuid().ToString("N"));
+                    Require(PakTools.Extract(root, gamePak, member.GetString()!, file), "게임에 필요한 원본 자료가 없습니다: " + member.GetString());
+                    bytes = File.ReadAllBytes(file);
+                    File.Delete(file);
+                }
+                else
+                {
+                    var target = hole.GetProperty("source_target").GetString()!;
+                    var path = DocumentPath(root, target);
+                    if (!File.Exists(path) || Sha(path) != expected)
+                    {
+                        Require(conversions.TryGetValue(target, out var conversion), "recipe conversion missing: " + target);
+                        BuildMapMaterial(root, conversion, jobs, sources, note);
+                    }
+                    bytes = File.ReadAllBytes(path);
+                }
+                Require(Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() == expected, "지원하는 원본 자료와 다릅니다: " + hole.GetProperty("member").GetString());
+                Require(bytes.Length == hole.GetProperty("length").GetInt32(), "원본 자료의 크기가 일치하지 않습니다.");
+                Array.Copy(bytes, 0, data, hole.GetProperty("offset").GetInt32(), bytes.Length);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(temp, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+        Require(Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant() == wanted, "재구성한 수정 Pak이 검증된 결과와 다릅니다.");
+        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        File.WriteAllBytes(dest, data);
+    }
+
+    /// <summary>One recipe conversion: evaluate the recipe into a package and write its .umap/.uexp where the randomizer keeps them.</summary>
+    static void BuildMapMaterial(string root, JsonElement conversion, Dictionary<string, JsonElement> jobs, RecipeSources sources, Action<string> note)
+    {
+        var source = conversion.GetProperty("source").GetString()!;
+        Require(jobs.TryGetValue(source, out var job), "recipe target missing: " + source);
+        note("사용자 원본으로 맵 재료 준비 중: " + Path.GetFileNameWithoutExtension(source));
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { MaxDepth = 4096 }))
+            RecipeEvaluator.Write(null, job.GetProperty("expression"), sources, writer);
+        stream.Position = 0;
+        var asset = Asset.LoadJson(stream);
+        Names.Finalize(asset);
+        var umap = conversion.GetProperty("outputs").EnumerateObject().First(o => o.Value.GetString() == ".umap").Name;
+        var dest = DocumentPath(root, umap);
+        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+        asset.Raw.Write(dest);
+        sources.Trim();
+    }
+
+    static void Fail(string message) => throw new BuildException("prepare_failed", message);
 }
 
 /// <summary>The original maps as UAssetAPI JSON documents (what the recipe's paths index into), loaded on demand.</summary>

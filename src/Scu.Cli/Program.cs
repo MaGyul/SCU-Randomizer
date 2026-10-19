@@ -133,7 +133,7 @@ switch (args[0])
     }
     case "build":
     {
-        // scu build --randomizer <dir> --game <dir> --out <dir> [--stages a,b] [--bases cicada,..] [--profiles original] [--parallel n] [--work dir] [--keep-work]
+        // scu build --randomizer <dir> --game <dir> --out <dir> [--cache dir] [--stages a,b] [--bases cicada,..] [--profiles original] [--parallel n] [--work dir] [--keep-work]
         string Opt(string name, string? fallback = null)
         {
             int i = Array.IndexOf(args, name);
@@ -144,7 +144,8 @@ switch (args[0])
         var bases = new[] { "cicada" }.Concat(List(Opt("--bases", "cicada")).Where(b => b != "cicada")).ToArray();
         return Builder.Run(new BuildOptions(Opt("--randomizer"), Opt("--game"), Opt("--out"),
             List(Opt("--stages", string.Join(',', Builder.AllStages))), bases, List(Opt("--profiles", "original")),
-            args.Contains("--work") ? Opt("--work") : null, args.Contains("--keep-work"), int.Parse(Opt("--parallel", "1")), !args.Contains("--no-validate"), args.Contains("--strict-verify")));
+            args.Contains("--work") ? Opt("--work") : null, args.Contains("--keep-work"), int.Parse(Opt("--parallel", "1")), !args.Contains("--no-validate"), args.Contains("--strict-verify"),
+            args.Contains("--cache") ? Opt("--cache") : null));
     }
     case "prepare" when args.Length >= 3:
     {

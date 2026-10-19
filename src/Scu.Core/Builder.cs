@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace Scu.Core;
 
 public sealed record BuildOptions(string Randomizer, string Game, string Out, string[] Stages, string[] Bases, string[] Profiles,
-    string? Work = null, bool KeepWork = false, int Parallel = 1, bool Validate = true, bool StrictVerify = false);
+    string? Work = null, bool KeepWork = false, int Parallel = 1, bool Validate = true, bool StrictVerify = false, string? Cache = null);
 
 public sealed class BuildException : Exception
 {
@@ -68,14 +68,29 @@ public static class Builder
         {
             Emit("start", ("randomizer", o.Randomizer), ("out", o.Out));
             Directory.CreateDirectory(o.Out);
+            // with a cache folder, everything made from the user's game (extracted maps, prepared maps, rules pak) lives there, so replacing the randomizer data does not touch it
+            var shipped = Path.GetFullPath(o.Randomizer);
+            if (o.Cache != null)
+            {
+                var cacheRoot = Path.GetFullPath(o.Cache);
+                Directory.CreateDirectory(cacheRoot);
+                Prepare.SyncShipped(shipped, cacheRoot);
+                o = o with { Randomizer = cacheRoot };
+            }
             var free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(o.Out))!).AvailableFreeSpace;
             if (free < 3L * 1024 * 1024 * 1024) throw new BuildException("disk_space", "빈 공간이 3GB 미만입니다.");
-            var inputs = CheckInputs(o);
             Validate(o);
 
+            // clear the work folder first: a leftover from an earlier builder must not make the build fail minutes later
             var work = Path.GetFullPath(o.Work ?? Path.Combine(o.Out, "work"));
-            if (Directory.Exists(work)) Directory.Delete(work, true);
+            try { FsUtil.DeleteTreeWithRetry(work); }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                work = work + "-" + Environment.ProcessId;   // cannot clear the old one: use a fresh folder next to it
+                FsUtil.DeleteTreeWithRetry(work);
+            }
             Directory.CreateDirectory(work);
+            var inputs = CheckInputs(o, shipped);
             var cache = Path.Combine(work, "cache");
 
             // ---- merge (composer.build) ----
@@ -216,7 +231,7 @@ public static class Builder
             File.WriteAllText(Path.Combine(o.Out, "result.json"), result.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             Console.Out.WriteLine(new JsonObject(result.Select(kv => KeyValuePair.Create(kv.Key, kv.Value?.DeepClone()))) { ["event"] = "done" }.ToJsonString());
             Console.Out.Flush();
-            if (!o.KeepWork) try { Directory.Delete(work, true); } catch (IOException) { }
+            if (!o.KeepWork) try { FsUtil.DeleteTreeWithRetry(work); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
             return 0;
         }
         catch (BuildException e)
@@ -226,15 +241,16 @@ public static class Builder
         }
         catch (Exception e)
         {
-            Fail(o, "build_failed", e.GetType().Name + ": " + e.Message);
+            Fail(o, "build_failed", e.GetType().Name + ": " + e.Message, e.ToString());
             Console.Error.WriteLine(e);
             return 1;
         }
     }
 
-    static void Fail(BuildOptions o, string code, string message)
+    static void Fail(BuildOptions o, string code, string message, string? trace = null)
     {
         var result = new JsonObject { ["ok"] = false, ["code"] = code, ["message"] = message };
+        if (trace != null) result["trace"] = trace.Length > 4000 ? trace[..4000] : trace;
         try { File.WriteAllText(Path.Combine(o.Out, "result.json"), result.ToJsonString(new JsonSerializerOptions { WriteIndented = true })); } catch { }
         result["event"] = "error";
         Console.Out.WriteLine(result.ToJsonString());
@@ -253,7 +269,7 @@ public static class Builder
 
     sealed record Inputs(string Root, string MapTiles, string Game, string BasePak);
 
-    static Inputs CheckInputs(BuildOptions o)
+    static Inputs CheckInputs(BuildOptions o, string shipped)
     {
         var root = Path.GetFullPath(o.Randomizer);
         var rtm = Path.Combine(root, "extracted/Kageroh/Content/Levels/RundomMapTiles");
@@ -271,7 +287,7 @@ public static class Builder
         if (!Prepare.IsPrepared(root) && !legacyReady)
         {
             int n = 0;
-            Prepare.Run(root, o.Game, note => Progress("prepare", note, Math.Min(40, 4 + ++n)));
+            Prepare.Run(root, o.Game, note => Progress("prepare", note, Math.Min(40, 4 + ++n)), shipped);
         }
         var required2 = new List<string>
         {

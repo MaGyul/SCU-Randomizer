@@ -113,7 +113,7 @@ randomizer/
 
 - **초월자 난이도 결과의 파이썬 비교**: pak 4개가 만들어지고 게임에서 정상 동작을 확인했지만, export 단위로 파이썬과 비교하지는 않았습니다.
 - **파이썬 안전 검증 모듈**: 교체 모드 전제의 검증(`special_validation`, `*_validation`, 동작 시뮬레이션)과 SHA-256 고정값 검사. 대신 위의 구조 검증과 단계별 비교로 확인했습니다. 랜더마이저를 새 버전으로 바꿀 때는 비교를 다시 해야 합니다.
-- **곡옥 색상 pak**: 이 도구로 만들지 않습니다. [여기서 받을 수 있습니다](https://github.com/MaGyul/SCU/releases/download/randomizer/Kageroh-SCUMagatamaColors_0_P.pak) (`Kageroh-SCUMagatamaColors_0_P.pak`).
+- **곡옥 색상 pak**: 이 도구로 만들지 않습니다. [여기서 받을 수 있습니다](https://github.com/MaGyul/SCU-Randomizer/releases/download/1.0.0/Kageroh-SCUMagatamaColors_0_P.pak) (`Kageroh-SCUMagatamaColors_0_P.pak`).
 - **랜더마이저 0.30.21 외 버전**: 이 포크는 0.30.21 에 고정돼 있습니다.
 
 ## 진단용 명령
