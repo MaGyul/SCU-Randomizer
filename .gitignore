@@ -1,0 +1,30 @@
+# build output
+bin/
+obj/
+dist/
+*.user
+.vs/
+
+# scratch / measurement output (not part of the source)
+exe-out/
+probe/
+probe2/
+oracle/
+out/
+cache/
+*-out/
+*-out-*/
+build-out*/
+timing-out*/
+*.log
+*-result.txt
+*.pak
+
+# game-derived data must never be committed
+*.umap
+*.uexp
+*.uasset
+*.ubulk
+*.pak
+scu-prepared/
+extracted/
