@@ -67,7 +67,7 @@ public sealed class DifficultyRules
     {
         var tree = Path.Combine(workDirectory, "difficulty-tree");
         var mapsTree = Path.Combine(workDirectory, "difficulty-maps-tree");
-        foreach (var d in new[] { tree, mapsTree }) { if (Directory.Exists(d)) Directory.Delete(d, true); Directory.CreateDirectory(d); }
+        foreach (var d in new[] { tree, mapsTree }) { FsUtil.DeleteTreeWithRetry(d); Directory.CreateDirectory(d); }
         PakTools.Unpack(Root, RulesPak, tree);
         var required = new[] { "Extra5x5", "Stage5x5", "Stage6x5" }.SelectMany(p => new[] { MapMember(p, ".umap"), MapMember(p, ".uexp") }).ToHashSet();
         var optional = new[] { MapMember("Random5x5", ".umap"), MapMember("Random5x5", ".uexp") }.ToHashSet();
@@ -93,7 +93,7 @@ public sealed class DifficultyRules
             infos.Add(new PakInfo(pak, Convert.ToHexString(SHA256.HashData(f)).ToLowerInvariant(), new FileInfo(pak).Length,
                 PakTools.HashList(Root, pak).Count, ManifestRevision));
         }
-        Directory.Delete(tree, true); Directory.Delete(mapsTree, true);
+        FsUtil.DeleteTreeWithRetry(tree); FsUtil.DeleteTreeWithRetry(mapsTree);
         return (infos[0], infos[1]);
     }
 }

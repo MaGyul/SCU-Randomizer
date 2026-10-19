@@ -83,7 +83,7 @@ public static class PakTools
     /// <summary>Stage the map files under their game-relative paths, pack them and check the pak holds exactly those files.</summary>
     public static string PackMaps(string randomizerRoot, string pakPath, IReadOnlyDictionary<string, string> sourceFiles, string stageDirectory)
     {
-        if (Directory.Exists(stageDirectory)) Directory.Delete(stageDirectory, true);
+        FsUtil.DeleteTreeWithRetry(stageDirectory);
         var members = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (relative, source) in sourceFiles)
         {
