@@ -59,7 +59,7 @@ dotnet …Scu.Cli.dll prepare <랜더마이저 폴더> <게임 폴더>
 
 ### 진행 이벤트
 
-stdout 에 한 줄에 하나씩 JSON 을 냅니다. `start`, `progress`(`stage`, `message`, `percent`, `t`=경과 초), `done`, `error`. 형식은 파이썬 패처와 같으므로 `app/src/mappatch.mjs` 의 읽는 쪽은 그대로 쓸 수 있을 것으로 보지만, 연동해 본 적은 없습니다.
+stdout 에 한 줄에 하나씩 JSON 을 냅니다. `start`, `progress`(`stage`, `message`, `percent`, `t`=경과 초), `done`, `error`. 형식은 파이썬 패처와 같습니다.
 
 ## 구조
 
@@ -100,10 +100,8 @@ randomizer/
 | 영혼·심연·성역 기본 맵 변환·저장 | 137~139천 | 저장한 umap/uexp **바이트 동일** |
 | 준비 단계 산출물 4개 | – | 파이썬이 만든 파일과 **바이트 동일** |
 
-- 이후 최적화(저장 단계 간소화, 미리 읽기, 메모리 해제, 병렬 옵션) 때마다 맵 파일 8개의 내용 해시가 이전 빌드와 같은지 다시 확인했습니다.
 - 빌드마다 구조 검증을 돌립니다: 참조 범위, 이름 중복, 레벨, 클래스/함수 표, 바이트코드 크기와 점프 목적지, 방 존재. 전체 빌드에서 약 4초 걸립니다.
 - 게임 실행 확인: 일반 빌드와 초월자 빌드(`--profiles original,transcendent`) 모두 인 게임에서 문제 없이 동작했습니다.
-- 파이썬 비교에 쓴 보조 스크립트와 기준 산출물(`oracle/`)은 저장소에 포함되어 있지 않습니다.
 
 ## 파이썬 결과와 다른 점
 
@@ -115,13 +113,9 @@ randomizer/
 
 - **초월자 난이도 결과의 파이썬 비교**: pak 4개가 만들어지고 게임에서 정상 동작을 확인했지만, export 단위로 파이썬과 비교하지는 않았습니다.
 - **파이썬 안전 검증 모듈**: 교체 모드 전제의 검증(`special_validation`, `*_validation`, 동작 시뮬레이션)과 SHA-256 고정값 검사. 대신 위의 구조 검증과 단계별 비교로 확인했습니다. 랜더마이저를 새 버전으로 바꿀 때는 비교를 다시 해야 합니다.
-- **곡옥 색상 pak**: 필요 없다고 해서 제외했습니다.
+- **곡옥 색상 pak**: 제외했습니다.
 - **랜더마이저 0.30.21 외 버전**: 이 포크는 0.30.21 에 고정돼 있습니다.
 
 ## 진단용 명령
 
-`stages`(병합 단계별 JSON 덤프), `transplant`, `serialize`, `build-base`, `compose`, `roundtrip`, `dump-json`, `validate-level`, `inspect`, `json2umap` 은 개발·비교용입니다. 일반 사용에는 `build` 와 `prepare` 만 쓰면 됩니다.
-
-## 정리해도 되는 폴더
-
-개발 중 생긴 임시 폴더입니다: `oracle/`(약 3GB), `out/`, `cache/`, `build-out*`, `bench-out-*`, `mem-out-*`, `par-out-*`, `fast-out`, `opt-out`, `timing-out*`, `probe`, `probe2`, `*.log`, `*.ps1`, `bench.sh`. 소스는 `src/` 와 이 문서, `PATCHES.md` 입니다.
+`stages`, `transplant`, `serialize`, `build-base`, `compose`, `roundtrip`, `dump-json`, `validate-level`, `inspect`, `json2umap` 은 개발·비교용입니다. 일반 사용에는 `build` 와 `prepare` 만 씁니다.
