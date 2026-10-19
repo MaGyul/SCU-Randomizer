@@ -3,6 +3,7 @@
 `app/patcher/scu_map_patch.py`는 랜더마이저(Four9, 0.30.21) 파이썬 소스에 **문자열 패치**를 얹어서 "호스트 방은 그대로 두고
 다른 스테이지의 방을 풀에 추가하는(RETAIN)" 맵을 만듭니다. C# 포트는 문자열 치환을 쓰지 않고 이 패치 결과를 **코드에 직접 내장**합니다.
 이 문서는 패치 43곳(필수 39 + 선택 4)이 C#의 어디에 어떻게 반영됐는지 추적합니다.
+(이 파이썬 파일들은 앱의 `app/patcher`에서 제거되었습니다. 필요하면 git 기록에서 볼 수 있습니다.)
 
 - 코드 안의 표시: 패치로 바뀐 동작은 `// SCU-PATCH <파일>#<번호>` 주석으로 표시합니다. (`grep -rn "SCU-PATCH" src` 로 찾습니다)
 - 환경변수 `SCU_RETAIN_DONORS` / `SCU_RETAIN_STAGES` / `SCU_RETAIN_LT`는 C#에서 `retain` 인자(또는 `Compose.Run`의 `retainDonors`)로 바뀝니다. 환경변수를 쓰지 않습니다.

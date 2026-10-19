@@ -1,9 +1,9 @@
 # SCU 맵 빌더 (C# 포트)
 
-그림자 복도 랜더마이저(Four9, 0.30.21)의 맵 합성 엔진과 SCU 패치 빌더(`app/patcher`)를 **C#(.NET 8) CLI 하나로** 옮긴 것입니다.
+그림자 복도 랜더마이저(Four9, 0.30.21)의 맵 합성 엔진과 SCU 패치 빌더(예전 `app/patcher`의 파이썬 코드, 지금은 앱에서 제거됨)를 **C#(.NET 8) CLI 하나로** 옮긴 것입니다.
 파이썬과 중간 JSON(수백 MB)을 없애고, UAssetAPI 객체를 메모리에서 직접 다룹니다. GUI는 없습니다.
 
-결과물은 기존 패처와 같은 `Kageroh-SCUMapShuffle_0_P.pak` 이고, 진행 상황도 같은 형식(한 줄에 JSON 하나)으로 출력합니다.
+결과물은 파이썬 패처와 같은 `Kageroh-SCUMapShuffle_0_P.pak` 이고, 진행 상황도 같은 형식(한 줄에 JSON 하나)으로 출력합니다.
 
 ## 요약
 
@@ -12,17 +12,30 @@
 | 전체 빌드 (기본 맵 4개) | 965초 | **217초** |
 | 매미의 복도만 | 506초 | **103초** |
 | 최대 메모리 (전체 빌드) | 13.9GB | **7.9GB** |
-| 준비 단계 (처음 한 번) | 약 12분 | **155초** |
+| 준비 단계 (처음 한 번) | 약 12분 | **약 6.5분** (배포 zip만 풀어 둔 상태에서 JSON 문서·`rules.pak` 포함 388초) |
 
-- 모두 준비 자료가 이미 있는 같은 PC에서 순서대로 잰 값입니다. 파이썬은 `app/patcher/scu_map_patch.py`, C#은 `scu build` 입니다.
+- 빌드 시간은 준비 자료가 이미 있는 같은 PC에서 순서대로 잰 값입니다. 파이썬은 예전 `scu_map_patch.py`, C#은 `scu build` 입니다. 초월자 기준 맵과 난이도 pak까지 함께 만들면 전체 빌드는 약 6분입니다.
 - 결과 맵의 내용은 파이썬과 단계별로 비교해서 확인했습니다([검증](#검증) 참고). **일반 빌드와 초월자 빌드 모두 게임에서 직접 실행해 확인했습니다**(문제 없음).
 
 ## 필요한 것
 
-- .NET 8 이상 (빌드에는 SDK)
-- 준비 단계를 마친 랜더마이저 0.30.21 폴더. `tools/repak-0.2.3/repak.exe` 를 그대로 씁니다.
+- .NET 8 이상 (빌드에는 SDK). 단일 실행 파일(`Scu.Cli.exe`)을 쓰면 필요 없습니다.
+- 랜더마이저 0.30.21 배포 파일 중 아래 파일들. 압축만 풀어 두면 되고 **미리 준비할 필요는 없습니다**(첫 실행에서 알아서 준비합니다).
 - 그림자 복도 설치 폴더 (원본은 읽기만 합니다)
 - 여유 공간 6GB 이상, 메모리는 전체 빌드 기준 약 8~9GB
+
+### 랜더마이저 폴더에서 읽는 파일
+
+| 파일 | 용도 |
+|---|---|
+| `portable-spec.json` | 버전 확인, 게임 파일 해시, 준비 사양 |
+| `tools/repak-0.2.3/repak.exe` | pak 만들기와 풀기 |
+| `app/local-map-recipes/recipe.json` | 사용자 게임에서 준비 맵과 JSON 문서를 만드는 레시피 |
+| `app/local-templates/rules.template.bin` | 초월자 규칙 pak 템플릿 |
+| `app/difficulty-assets/catalog.json`, `20261011-v100/manifest.json` | 난이도 자료 정보 |
+| `app/updates/sanctuary-LT/all/event-plan.json`, `donor-preflight.json` | 성역 2·3갈래 계획 |
+
+파이썬 런타임, `.py`, `UAssetGUI`, `dotnet` 폴더 등 나머지는 필요 없습니다. 배포할 때는 위 파일에 Four9의 안내문(`사용 방법.txt` 등)과 `licenses/` 를 함께 두세요.
 
 ## 빌드
 
@@ -43,6 +56,7 @@ dotnet randomizer/src/Scu.Cli/bin/Release/net8.0/Scu.Cli.dll build \
 | `--bases` | `cicada` | 기본 맵. 매미의 복도는 항상 포함. `soul,abyss,sanctuary` 추가 가능 |
 | `--profiles` | `original` | 난이도 기준. `original,transcendent` 가능 (난이도 pak 2개도 함께 생성) |
 | `--parallel` | `1` | 기본 맵별 작업 동시 처리(1~4). 효과가 작아 기본은 1 |
+| `--cache` | 랜더마이저 폴더 | 게임에서 만든 자료(추출한 맵, 준비 맵, JSON 문서, `rules.pak`)를 저장할 폴더. 주면 랜더마이저 폴더는 읽기만 하므로 배포 파일을 통째로 바꿔도 준비 자료가 유지됩니다 |
 | `--work` / `--keep-work` | `<out>/work` | 작업 폴더 지정 / 성공해도 남기기 |
 | `--no-validate` | 검증 켬 | 구조 검증 끄기 |
 | `--strict-verify` | 끔 | 저장 후 비교를 export별 JSON 비교(느림)로 |
@@ -55,7 +69,7 @@ dotnet randomizer/src/Scu.Cli/bin/Release/net8.0/Scu.Cli.dll build \
 dotnet …Scu.Cli.dll prepare <랜더마이저 폴더> <게임 폴더>
 ```
 
-준비 결과는 `<랜더마이저>/scu-prepared/` 와 `extracted/` 에 만들어집니다. 파이썬 랜더마이저가 이미 준비한 폴더도 그대로 쓸 수 있습니다.
+준비 결과는 `--cache` 폴더(주지 않으면 `<랜더마이저>/`)의 `scu-prepared/`, `extracted/`, `app/` 에 만들어집니다. 처음 한 번만 필요하고, 이후 빌드는 준비 단계 없이 바로 병합으로 들어갑니다. 파이썬 랜더마이저가 이미 준비한 폴더도 그대로 쓸 수 있습니다.
 
 ### 진행 이벤트
 
@@ -65,7 +79,7 @@ stdout 에 한 줄에 하나씩 JSON 을 냅니다. `start`, `progress`(`stage`,
 
 ```
 randomizer/
-  PATCHES.md           app/patcher 패치 43곳이 C#의 어디에 반영됐는지
+  PATCHES.md           예전 app/patcher 패치 43곳이 C#의 어디에 반영됐는지
   src/Scu.Core/        엔진
   src/Scu.Cli/         명령줄 (build, prepare, 단계별 진단 명령)
 ```
@@ -73,7 +87,9 @@ randomizer/
 | 파일 | 하는 일 (원본 파이썬) |
 |---|---|
 | `Builder.cs` | 전체 흐름, pak 검증, 결과 JSON (`scu_map_patch.main/run_build/build_maps`) |
-| `Prepare.cs` | 게임에서 원본 맵 추출, 레시피로 준비 맵 생성 (`launcher.prepare`, `local_map_materials`) |
+| `Prepare.cs` | 게임에서 원본 맵 추출, 레시피로 준비 맵·JSON 문서·`rules.pak` 생성, `--cache` 폴더 관리 (`launcher.prepare`, `local_map_materials`, `local_original_assets`) |
+| `PythonJson.cs` | 해시가 고정된 JSON 문서를 파이썬과 같은 바이트로 쓰기 (들여쓰기, float 표기, CRLF) |
+| `FsUtil.cs` | junction·읽기 전용 파일이 있어도 실패하지 않는 폴더 삭제 |
 | `Compose.cs` | 성역 도너 방 + 매미의 복도 호스트 방 합성 (`composer.compose`) |
 | `BundleInjector.cs`, `AbyssBundles.cs`, `SoulBundles.cs` | 심연·영혼 X 구역 (`soul_bundles`, `abyss_bundles`, `soul_special`) |
 | `LtBundles.cs`, `LtStages.cs`, `SanctuaryLt.cs` | 영혼·심연·성역 2·3갈래 (`*_lt_bundles`, `bundle_core`, `all_build`) |
@@ -99,9 +115,11 @@ randomizer/
 | 7 매미의 복도 구역 외형 | 135,699 | 위와 같은 2개 외 동일 |
 | 영혼·심연·성역 기본 맵 변환·저장 | 137~139천 | 저장한 umap/uexp **바이트 동일** |
 | 준비 단계 산출물 4개 | – | 파이썬이 만든 파일과 **바이트 동일** |
+| 준비 단계 JSON 문서 5개, `rules.pak` | – | 레시피의 sha256과 **일치** (파이썬이 만든 파일과 같은 바이트) |
 
 - 빌드마다 구조 검증을 돌립니다: 참조 범위, 이름 중복, 레벨, 클래스/함수 표, 바이트코드 크기와 점프 목적지, 방 존재. 전체 빌드에서 약 4초 걸립니다.
 - 게임 실행 확인: 일반 빌드와 초월자 빌드(`--profiles original,transcendent`) 모두 인 게임에서 문제 없이 동작했습니다.
+- 배포 zip만 풀어 둔 깨끗한 폴더(필요한 파일 8개만 남긴 상태)에서 준비부터 전체 빌드까지 통과했고, 랜더마이저 폴더를 바꿔도 같은 `--cache` 로 준비 없이 빌드됩니다.
 
 ## 파이썬 결과와 다른 점
 
