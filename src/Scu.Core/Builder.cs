@@ -24,7 +24,11 @@ public static class Builder
     public static readonly string[] AllStages = { "sanctuary", "soul", "abyss", "soul-lt", "abyss-lt" };
     static readonly string[] SupportedBases = { "cicada", "soul", "abyss", "sanctuary" };
     public const string PakName = "Kageroh-SCUMapShuffle_0_P.pak";
-    public const string ReleaseSupported = "0.30.21";
+    /// <summary>
+    /// Randomizer releases whose data the build reads. 0.35.0 changes only the transcendent rules (template, manifest,
+    /// catalog, spec hashes); the map recipe, donors and base maps are byte-identical to 0.30.21.
+    /// </summary>
+    public static readonly string[] ReleasesSupported = { "0.30.21", "0.35.0" };
 
     static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
@@ -224,7 +228,7 @@ public static class Builder
             {
                 ["ok"] = true, ["pak"] = original["pak"]!.DeepClone(), ["sha256"] = original["sha256"]!.DeepClone(), ["size"] = original["size"]!.DeepClone(),
                 ["paks"] = made, ["difficultyPak"] = difficultyPak, ["difficultyMapsPak"] = difficultyMapsPak,
-                ["members"] = JsonSerializer.SerializeToNode(members), ["randomizerRelease"] = ReleaseSupported, ["rooms"] = rooms,
+                ["members"] = JsonSerializer.SerializeToNode(members), ["randomizerRelease"] = ReadRelease(o.Randomizer), ["rooms"] = rooms,
                 ["bases"] = JsonSerializer.SerializeToNode(o.Bases), ["workerStats"] = new JsonArray(), ["districtLook"] = looks,
                 ["seconds"] = Math.Round(started.Elapsed.TotalSeconds, 1), ["validated"] = o.Validate, ["validateSeconds"] = Math.Round(validateSeconds, 1),
             };
@@ -269,6 +273,12 @@ public static class Builder
 
     sealed record Inputs(string Root, string MapTiles, string Game, string BasePak);
 
+    static string? ReadRelease(string root)
+    {
+        using var spec = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "portable-spec.json")));
+        return spec.RootElement.TryGetProperty("release", out var r) ? r.GetString() : null;
+    }
+
     static Inputs CheckInputs(BuildOptions o, string shipped)
     {
         var root = Path.GetFullPath(o.Randomizer);
@@ -279,7 +289,7 @@ public static class Builder
         using (var spec = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "portable-spec.json"))))
         {
             var release = spec.RootElement.TryGetProperty("release", out var r) ? r.GetString() : null;
-            if (release != ReleaseSupported) throw new BuildException("unsupported_release", $"지원하지 않는 랜더마이저 버전입니다: {release}");
+            if (release == null || !ReleasesSupported.Contains(release)) throw new BuildException("unsupported_release", $"지원하지 않는 랜더마이저 버전입니다: {release}");
         }
         bool legacyReady = HostComposer.Assets.Values.All(p => File.Exists(Path.Combine(rtm, p + ".umap")) && File.Exists(Path.Combine(rtm, p + ".uexp")))
             && File.Exists(Path.Combine(root, Prepare.SanctuaryAllRel)) && File.Exists(Path.Combine(root, Prepare.SoulX1Rel))

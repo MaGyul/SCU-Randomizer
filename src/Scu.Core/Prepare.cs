@@ -45,8 +45,21 @@ public static class Prepare
 
     static string DocumentPath(string root, string target) => Path.Combine(root, target.Replace('/', Path.DirectorySeparatorChar));
 
+    /// <summary>
+    /// The rules pak exists and is the one the current spec describes. A newer randomizer release ships a new template
+    /// (and spec hash) while the cache still holds the old pak; that pak must be rebuilt, not reused.
+    /// </summary>
+    static bool RulesPakCurrent(string root)
+    {
+        var dest = DocumentPath(root, RulesPakTarget);
+        if (!File.Exists(dest)) return false;
+        using var spec = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "portable-spec.json"), Encoding.UTF8));
+        var row = spec.RootElement.GetProperty("local_assets").GetProperty("paks").EnumerateArray().First(p => p.GetProperty("target").GetString() == RulesPakTarget);
+        return Sha(dest) == row.GetProperty("sha256").GetString();
+    }
+
     public static bool IsPrepared(string randomizerRoot)
-        => Documents.All(d => File.Exists(DocumentPath(randomizerRoot, d))) && File.Exists(DocumentPath(randomizerRoot, RulesPakTarget)) && Wanted.All(w => File.Exists(PreparedPath(randomizerRoot, w.Output)) && File.Exists(Path.ChangeExtension(PreparedPath(randomizerRoot, w.Output), ".uexp")))
+        => Documents.All(d => File.Exists(DocumentPath(randomizerRoot, d))) && RulesPakCurrent(randomizerRoot) && Wanted.All(w => File.Exists(PreparedPath(randomizerRoot, w.Output)) && File.Exists(Path.ChangeExtension(PreparedPath(randomizerRoot, w.Output), ".uexp")))
            && File.Exists(Path.Combine(randomizerRoot, "extracted/Kageroh/Content/Levels/RundomMapTiles/Stage6x5.umap"));
 
     /// <summary>Prepared package: ours if present, otherwise the one the Python randomizer's preparation left in the folder.</summary>
@@ -141,7 +154,7 @@ public static class Prepare
 
         // ---- prepared packages from the recipe ----
         var pending = Wanted.Where(w => !File.Exists(PreparedPath(root, w.Output))).ToList();
-        if (pending.Count == 0 && Documents.All(d => File.Exists(DocumentPath(root, d))) && File.Exists(DocumentPath(root, RulesPakTarget))) return;
+        if (pending.Count == 0 && Documents.All(d => File.Exists(DocumentPath(root, d))) && RulesPakCurrent(root)) return;
         note("사용자 원본으로 맵 재료 준비 중…");
         var recipePath = Path.Combine(shippedRoot, "app/local-map-recipes/recipe.json");
         using var recipeDoc = JsonDocument.Parse(File.ReadAllBytes(recipePath), DeepJson);
