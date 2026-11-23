@@ -15,6 +15,9 @@ public static class PakTools
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
         };
+        // repak writes the entries from several threads, so the same files give a different byte layout every time.
+        // One thread makes the pak reproducible: players build the multi pack on their own PCs and the relay compares its sha.
+        info.Environment["RAYON_NUM_THREADS"] = "1";
         foreach (var a in args) info.ArgumentList.Add(a);
         using var p = Process.Start(info)!;
         var stdout = p.StandardOutput.ReadToEndAsync();

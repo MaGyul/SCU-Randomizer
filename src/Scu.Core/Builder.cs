@@ -6,7 +6,8 @@ using System.Text.Json.Nodes;
 namespace Scu.Core;
 
 public sealed record BuildOptions(string Randomizer, string Game, string Out, string[] Stages, string[] Bases, string[] Profiles,
-    string? Work = null, bool KeepWork = false, int Parallel = 1, bool Validate = true, bool StrictVerify = false, string? Cache = null);
+    string? Work = null, bool KeepWork = false, int Parallel = 1, bool Validate = true, bool StrictVerify = false, string? Cache = null,
+    string? BaseMaps = null);
 
 public sealed class BuildException : Exception
 {
@@ -133,7 +134,18 @@ public static class Builder
                 LookSummary? look;
                 Asset final;
                 List<NativeEntry>? native = null;
-                if (baseStage == "cicada" && profile == "original")
+                if (o.BaseMaps != null)
+                {
+                    // experimental: add the rooms to the given maps (2-player multi pak) instead of the game's own, cicada included
+                    var baseline = Asset.Load(Path.Combine(o.BaseMaps, package + ".umap"));
+                    var (transplanted, _, _) = RetainHost.Transplant(data, baseStage, baseline, o.Randomizer);
+                    var (roots, marked) = MultiReplication.MarkRoots(transplanted);
+                    Builder.Emit("multi_roots", ("base", baseStage), ("roots", roots), ("marked", marked));
+                    Progress("look", $"{baseStage} look", percent + 5, baseStage);
+                    (final, look) = DistrictLook.Apply(transplanted, baseStage);
+                    native = RetainHost.Native(final);
+                }
+                else if (baseStage == "cicada" && profile == "original")
                 {
                     Progress("look", $"{baseStage} look", percent + 5, baseStage);
                     (final, look) = DistrictLook.Apply(data, "cicada");
@@ -156,7 +168,7 @@ public static class Builder
             }
 
             // Operations that only read the merged package can run side by side; the Cicada map edits it in place and runs last.
-            var independent = ops.Where(op => !(op.Base == "cicada" && op.Profile == "original")).ToList();
+            var independent = ops.Where(op => o.BaseMaps != null || !(op.Base == "cicada" && op.Profile == "original")).ToList();
             var results = new Dictionary<(string, string), OpResult>();
             var gate = new object();
             Parallel.ForEach(independent, new ParallelOptions { MaxDegreeOfParallelism = degree }, op =>
@@ -164,7 +176,7 @@ public static class Builder
                 var r = RunOp(op);
                 lock (gate) results[op] = r;
             });
-            foreach (var op in ops.Where(op => op.Base == "cicada" && op.Profile == "original")) results[op] = RunOp(op);
+            foreach (var op in ops.Where(op => !results.ContainsKey(op))) results[op] = RunOp(op);
             ReleaseMemory();
 
             foreach (var op in ops)   // assemble in the fixed operation order
@@ -265,6 +277,8 @@ public static class Builder
     {
         if (o.Stages.Length == 0 || o.Stages.Any(s => !AllStages.Contains(s))) throw new BuildException("invalid_stages", $"지원하지 않는 스테이지: {string.Join(',', o.Stages)}");
         if (o.Bases.Any(b => !SupportedBases.Contains(b))) throw new BuildException("invalid_stages", $"지원하지 않는 기본 맵: {string.Join(',', o.Bases)}");
+        if (o.BaseMaps != null && (o.Profiles.Any(p => p != "original") || !HostComposer.Assets.Values.All(p => File.Exists(Path.Combine(o.BaseMaps, p + ".umap")))))
+            throw new BuildException("invalid_stages", "--base-maps 에는 맵 4개가 모두 있어야 하고, 원본 난이도만 지원합니다.");
         if (o.Profiles.Length == 0 || !o.Profiles.Contains("original") || o.Profiles.Any(p => p is not ("original" or "transcendent")))
             throw new BuildException("invalid_stages", $"지원하지 않는 난이도 기준: {string.Join(',', o.Profiles)}");
     }

@@ -133,7 +133,7 @@ switch (args[0])
     }
     case "build":
     {
-        // scu build --randomizer <dir> --game <dir> --out <dir> [--cache dir] [--stages a,b] [--bases cicada,..] [--profiles original] [--parallel n] [--work dir] [--keep-work]
+        // scu build --randomizer <dir> --game <dir> --out <dir> [--cache dir] [--stages a,b] [--bases cicada,..] [--profiles original] [--parallel n] [--work dir] [--keep-work] [--base-maps dir]
         string Opt(string name, string? fallback = null)
         {
             int i = Array.IndexOf(args, name);
@@ -145,7 +145,19 @@ switch (args[0])
         return Builder.Run(new BuildOptions(Opt("--randomizer"), Opt("--game"), Opt("--out"),
             List(Opt("--stages", string.Join(',', Builder.AllStages))), bases, List(Opt("--profiles", "original")),
             args.Contains("--work") ? Opt("--work") : null, args.Contains("--keep-work"), int.Parse(Opt("--parallel", "1")), !args.Contains("--no-validate"), args.Contains("--strict-verify"),
-            args.Contains("--cache") ? Opt("--cache") : null));
+            args.Contains("--cache") ? Opt("--cache") : null, args.Contains("--base-maps") ? Opt("--base-maps") : null));
+    }
+    case "multi-pack":
+    {
+        // scu multi-pack --pack <official multi pack dir> --randomizer <dir> --game <dir> --out <new pack dir> [--cache dir] [--parallel n] [--work dir]
+        string Opt(string name, string? fallback = null)
+        {
+            int i = Array.IndexOf(args, name);
+            if (i >= 0 && i + 1 < args.Length) return args[i + 1];
+            return fallback ?? throw new ArgumentException("missing " + name);
+        }
+        return MultiPack.Run(new MultiPack.Options(Opt("--pack"), Opt("--randomizer"), Opt("--game"), Opt("--out"),
+            args.Contains("--cache") ? Opt("--cache") : null, args.Contains("--work") ? Opt("--work") : null, int.Parse(Opt("--parallel", "1"))));
     }
     case "prepare" when args.Length >= 3:
     {

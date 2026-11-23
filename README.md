@@ -60,6 +60,7 @@ dotnet randomizer/src/Scu.Cli/bin/Release/net8.0/Scu.Cli.dll build \
 | `--work` / `--keep-work` | `<out>/work` | 작업 폴더 지정 / 성공해도 남기기 |
 | `--no-validate` | 검증 켬 | 구조 검증 끄기 |
 | `--strict-verify` | 끔 | 저장 후 비교를 export별 JSON 비교(느림)로 |
+| `--base-maps` | 없음 | 실험: 게임 원본 대신 이 폴더의 맵 4개(.umap/.uexp)에 추가 구역을 얹습니다(매미의 복도 포함). 원본 난이도만 지원. 2인 멀티 Pak의 맵에 쓰며, 모든 타일 루트에 멀티와 같은 복제 설정(`bReplicates` 등)을 넣습니다 |
 
 출력 폴더에는 `Kageroh-SCUMapShuffle_0_P.pak`(초월자 포함 시 `…T_0_P.pak`, 난이도 pak 2개)과 `result.json` 이 생깁니다.
 
@@ -70,6 +71,16 @@ dotnet …Scu.Cli.dll prepare <랜더마이저 폴더> <게임 폴더>
 ```
 
 준비 결과는 `--cache` 폴더(주지 않으면 `<랜더마이저>/`)의 `scu-prepared/`, `extracted/`, `app/` 에 만들어집니다. 처음 한 번만 필요하고, 이후 빌드는 준비 단계 없이 바로 병합으로 들어갑니다. 파이썬 랜더마이저가 이미 준비한 폴더도 그대로 쓸 수 있습니다.
+
+### 맵 셔플용 2인 멀티 꾸러미
+
+```bash
+dotnet …Scu.Cli.dll multi-pack --pack <공식 멀티 꾸러미 폴더> --randomizer <랜더마이저 폴더> --game <게임 폴더> --out <새 꾸러미 폴더> [--cache 폴더] [--parallel n]
+```
+
+Four9의 2인 멀티 실험판(허락받음) 꾸러미를 바탕으로, 멀티 Pak의 맵 4개에 추가 구역을 얹어(`--base-maps`) 같은 Pak 이름으로 다시 묶고 새 꾸러미 폴더를 만듭니다. 나머지 에셋과 안내 파일은 그대로이고, `tools/version.json` 의 판은 `<공식 판>-scu<N>`(`MultiPack.Revision`), `scuMapShuffle: true`, `scuBase`(공식 판과 sha256)가 들어갑니다. 끝나면 `multi_done` 이벤트를 냅니다(중간의 `done` 은 맵 빌드 단계 끝).
+
+각자 PC에서 만들므로 같은 입력이면 같은 바이트가 나와야 합니다(중계 서버가 판 + sha로 비교). repak 0.2.3의 `pack` 은 여러 스레드로 써서 매번 배치가 달라지므로 `PakTools` 가 `RAYON_NUM_THREADS=1` 로 실행합니다. v99로 세 번 따로 만들어 같은 sha가 나오는 것을 확인했습니다.
 
 ### 진행 이벤트
 
